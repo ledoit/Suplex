@@ -1,18 +1,20 @@
 //! SUPLEX — Get-On-Top-style joined ragdoll wrestling.
-//! Physics + match rules live in Zig; the browser only paints and feeds keys.
+//! Verlet units: velocity is pixels/frame. Keep impulses tiny.
 
 const std = @import("std");
 
 const WORLD_W: f32 = 960;
 const WORLD_H: f32 = 540;
 const FLOOR_Y: f32 = 500;
-const GRAVITY: f32 = 1380;
-const DRAG: f32 = 0.984;
+const GRAVITY: f32 = 0.42; // px/frame² at 60fps (≈1500 px/s²)
+const DRAG: f32 = 0.97;
+const MAX_SPEED: f32 = 11; // px/frame ≈ 660 px/s hard cap
 const WIN_SCORE: i32 = 11;
-const CONSTRAINT_ITERS: usize = 18;
-const SCORE_PAUSE: f32 = 1.25;
-const RESET_PAUSE: f32 = 0.7;
-const PIN_HOLD: f32 = 0.3;
+const CONSTRAINT_ITERS: usize = 8;
+const SCORE_PAUSE: f32 = 1.2;
+const RESET_PAUSE: f32 = 0.55;
+const PIN_HOLD: f32 = 0.28;
+const SUBSTEPS: usize = 2;
 
 const Particle = struct {
     x: f32,
@@ -43,7 +45,6 @@ const Input = struct {
     down: bool = false,
 };
 
-// Particle indices
 const P1_HEAD: usize = 0;
 const P1_TORSO: usize = 1;
 const P1_HIPS: usize = 2;
@@ -54,7 +55,7 @@ const GRIP: usize = 6;
 const PARTICLE_COUNT: usize = 7;
 
 var particles: [PARTICLE_COUNT]Particle = undefined;
-var constraints: [12]Constraint = undefined;
+var constraints: [10]Constraint = undefined;
 var constraint_count: usize = 0;
 
 var p1_input: Input = .{};
@@ -70,7 +71,6 @@ var shake: f32 = 0;
 var p1_pin_timer: f32 = 0;
 var p2_pin_timer: f32 = 0;
 
-/// Flat snapshot for JS
 var state_buf: [48]f32 = undefined;
 
 fn setParticle(i: usize, x: f32, y: f32, r: f32, mass: f32) void {
@@ -99,32 +99,31 @@ fn addConstraint(a: usize, b: usize, stiffness: f32) void {
 fn spawnFighters() void {
     constraint_count = 0;
     const cx = WORLD_W * 0.5;
-    const base = FLOOR_Y - 58;
+    const floor = FLOOR_Y;
 
-    // Tall stance — room to lean before anyone kisses the mat.
-    setParticle(P1_HEAD, cx - 86, base - 142, 16, 0.9);
-    setParticle(P1_TORSO, cx - 68, base - 94, 15, 2.05);
-    setParticle(P1_HIPS, cx - 60, base - 40, 14, 1.95);
+    // Compact stance, feet near the mat — Get-On-Top energy.
+    setParticle(P1_HEAD, cx - 70, floor - 108, 16, 1.0);
+    setParticle(P1_TORSO, cx - 55, floor - 68, 15, 2.2);
+    setParticle(P1_HIPS, cx - 48, floor - 28, 14, 2.0);
 
-    setParticle(P2_HEAD, cx + 86, base - 142, 16, 0.9);
-    setParticle(P2_TORSO, cx + 68, base - 94, 15, 2.05);
-    setParticle(P2_HIPS, cx + 60, base - 40, 14, 1.95);
+    setParticle(P2_HEAD, cx + 70, floor - 108, 16, 1.0);
+    setParticle(P2_TORSO, cx + 55, floor - 68, 15, 2.2);
+    setParticle(P2_HIPS, cx + 48, floor - 28, 14, 2.0);
 
-    setParticle(GRIP, cx, base - 100, 10, 0.7);
+    setParticle(GRIP, cx, floor - 72, 10, 1.2);
 
-    addConstraint(P1_HEAD, P1_TORSO, 1.0);
-    addConstraint(P1_TORSO, P1_HIPS, 1.0);
-    addConstraint(P1_HEAD, P1_HIPS, 0.82);
-    addConstraint(P1_TORSO, GRIP, 0.75);
-    addConstraint(P1_HIPS, GRIP, 0.3);
-    addConstraint(P1_HEAD, GRIP, 0.16);
+    // Moderate stiffness — 1.0 + over-iteration was detonating the chain.
+    addConstraint(P1_HEAD, P1_TORSO, 0.7);
+    addConstraint(P1_TORSO, P1_HIPS, 0.7);
+    addConstraint(P1_HEAD, P1_HIPS, 0.35);
+    addConstraint(P1_TORSO, GRIP, 0.55);
+    addConstraint(P1_HIPS, GRIP, 0.25);
 
-    addConstraint(P2_HEAD, P2_TORSO, 1.0);
-    addConstraint(P2_TORSO, P2_HIPS, 1.0);
-    addConstraint(P2_HEAD, P2_HIPS, 0.82);
-    addConstraint(P2_TORSO, GRIP, 0.75);
-    addConstraint(P2_HIPS, GRIP, 0.3);
-    addConstraint(P2_HEAD, GRIP, 0.16);
+    addConstraint(P2_HEAD, P2_TORSO, 0.7);
+    addConstraint(P2_TORSO, P2_HIPS, 0.7);
+    addConstraint(P2_HEAD, P2_HIPS, 0.35);
+    addConstraint(P2_TORSO, GRIP, 0.55);
+    addConstraint(P2_HIPS, GRIP, 0.25);
 
     p1_pin_timer = 0;
     p2_pin_timer = 0;
@@ -133,72 +132,83 @@ fn spawnFighters() void {
 }
 
 fn hipsGrounded(hips: usize) bool {
-    return particles[hips].y + particles[hips].r > FLOOR_Y - 10;
+    return particles[hips].y + particles[hips].r > FLOOR_Y - 6;
 }
 
-/// Soft anti-pancake: keep head above torso above hips when possible.
-fn postureAssist(head: usize, torso: usize, hips: usize, dt: f32) void {
-    const k: f32 = 900 * dt;
-    if (particles[head].y > particles[torso].y - 18) {
-        particles[head].y -= k * 0.55 * particles[head].inv_mass;
-        particles[torso].y += k * 0.2 * particles[torso].inv_mass;
-    }
-    if (particles[torso].y > particles[hips].y - 22) {
-        particles[torso].y -= k * 0.4 * particles[torso].inv_mass;
-        particles[hips].y += k * 0.15 * particles[hips].inv_mass;
-    }
+/// Impulse in px/frame. y+ is down, so negative = jump up.
+fn addVelocity(i: usize, dvx: f32, dvy: f32) void {
+    // v = pos - prev  ⇒  prev' = prev - dv  so v' = v + dv
+    particles[i].px -= dvx;
+    particles[i].py -= dvy;
 }
 
-fn applyInput(torso: usize, head: usize, hips: usize, input: Input, up_prev: *bool, dt: f32) void {
-    const push: f32 = 1950 * dt;
-    const lean: f32 = 1250 * dt;
-    const jump: f32 = 600;
-    const crouch: f32 = 1350 * dt;
-    const lift: f32 = 800 * dt;
+fn applyInput(torso: usize, head: usize, hips: usize, input: Input, up_prev: *bool) void {
+    // Accelerations in px/frame² — small on purpose.
+    const push: f32 = 0.55;
+    const lean: f32 = 0.40;
+    const crouch: f32 = 0.45;
+    const hold_up: f32 = 0.25;
+    const jump_impulse: f32 = -7.5; // upward
 
     if (input.left) {
-        particles[torso].x -= push * particles[torso].inv_mass;
-        particles[head].x -= lean * particles[head].inv_mass;
-        particles[hips].x -= push * 0.35 * particles[hips].inv_mass;
-        particles[GRIP].x -= push * 0.14 * particles[GRIP].inv_mass;
+        addVelocity(torso, -push, 0);
+        addVelocity(head, -lean, 0);
+        addVelocity(hips, -push * 0.35, 0);
+        addVelocity(GRIP, -push * 0.15, 0);
     }
     if (input.right) {
-        particles[torso].x += push * particles[torso].inv_mass;
-        particles[head].x += lean * particles[head].inv_mass;
-        particles[hips].x += push * 0.35 * particles[hips].inv_mass;
-        particles[GRIP].x += push * 0.14 * particles[GRIP].inv_mass;
+        addVelocity(torso, push, 0);
+        addVelocity(head, lean, 0);
+        addVelocity(hips, push * 0.35, 0);
+        addVelocity(GRIP, push * 0.15, 0);
     }
 
-    // Jump is edge-triggered — holding W used to rocket every frame.
     const jump_pressed = input.up and !up_prev.*;
     if (jump_pressed and hipsGrounded(hips)) {
-        particles[hips].py += jump;
-        particles[torso].py += jump * 0.7;
-        particles[head].py += jump * 0.28;
-        particles[GRIP].py += jump * 0.35;
+        addVelocity(hips, 0, jump_impulse);
+        addVelocity(torso, 0, jump_impulse * 0.75);
+        addVelocity(head, 0, jump_impulse * 0.35);
+        addVelocity(GRIP, 0, jump_impulse * 0.4);
     } else if (input.up) {
-        particles[torso].y -= lift * 0.45 * particles[torso].inv_mass;
-        particles[head].y -= lift * 0.55 * particles[head].inv_mass;
+        addVelocity(torso, 0, -hold_up);
+        addVelocity(head, 0, -hold_up * 1.1);
     }
     up_prev.* = input.up;
 
     if (input.down) {
-        // Crush the opponent via grip/torso — don't drive your own head into the mat.
-        particles[torso].y += crouch * particles[torso].inv_mass;
-        particles[hips].y += crouch * 0.35 * particles[hips].inv_mass;
-        particles[GRIP].y += crouch * 0.55 * particles[GRIP].inv_mass;
+        addVelocity(torso, 0, crouch);
+        addVelocity(hips, 0, crouch * 0.4);
+        addVelocity(GRIP, 0, crouch * 0.7);
+        // Slight head tuck without planting yourself.
+        addVelocity(head, 0, crouch * 0.15);
     }
 }
 
-fn integrate(dt: f32) void {
+fn clampSpeed(p: *Particle) void {
+    var vx = p.x - p.px;
+    var vy = p.y - p.py;
+    const sp = @sqrt(vx * vx + vy * vy);
+    if (sp > MAX_SPEED) {
+        const s = MAX_SPEED / sp;
+        vx *= s;
+        vy *= s;
+        p.px = p.x - vx;
+        p.py = p.y - vy;
+    }
+}
+
+fn integrate() void {
     for (&particles) |*p| {
         if (p.inv_mass == 0) continue;
+        clampSpeed(p);
         const vx = (p.x - p.px) * DRAG;
         const vy = (p.y - p.py) * DRAG;
         p.px = p.x;
         p.py = p.y;
         p.x += vx;
-        p.y += vy + GRAVITY * dt * dt;
+        // Gravity once per substep, scaled so 2 substeps ≈ one frame of g.
+        p.y += vy + GRAVITY / @as(f32, SUBSTEPS);
+        clampSpeed(p);
     }
 }
 
@@ -230,13 +240,11 @@ fn satisfyConstraints() void {
             b.y -= by;
         }
 
-        separate(P1_HEAD, P2_HEAD, 0.85);
-        separate(P1_TORSO, P2_TORSO, 0.55);
-        separate(P1_HIPS, P2_HIPS, 0.55);
-        separate(P1_HEAD, P2_TORSO, 0.5);
-        separate(P2_HEAD, P1_TORSO, 0.5);
-        separate(P1_HEAD, P2_HIPS, 0.4);
-        separate(P2_HEAD, P1_HIPS, 0.4);
+        separate(P1_HEAD, P2_HEAD, 0.6);
+        separate(P1_TORSO, P2_TORSO, 0.45);
+        separate(P1_HIPS, P2_HIPS, 0.45);
+        separate(P1_HEAD, P2_TORSO, 0.4);
+        separate(P2_HEAD, P1_TORSO, 0.4);
     }
 }
 
@@ -268,35 +276,34 @@ fn collideWorld() void {
     for (&particles) |*p| {
         if (p.y + p.r > FLOOR_Y) {
             p.y = FLOOR_Y - p.r;
-            if (p.py > p.y) p.py = p.y + (p.py - p.y) * 0.15;
-            // More floor friction so pins stick and slides feel heavy.
-            p.px = p.x - (p.x - p.px) * 0.55;
+            // Kill downward velocity; keep a little bounce-free slide.
+            if (p.py < p.y) p.py = p.y;
+            p.px = p.x - (p.x - p.px) * 0.65;
         }
-        if (p.x - p.r < 28) {
-            p.x = 28 + p.r;
-            p.px = p.x + (p.x - p.px) * 0.35;
+        if (p.x - p.r < 40) {
+            p.x = 40 + p.r;
+            if (p.px > p.x) p.px = p.x;
         }
-        if (p.x + p.r > WORLD_W - 28) {
-            p.x = WORLD_W - 28 - p.r;
-            p.px = p.x + (p.x - p.px) * 0.35;
+        if (p.x + p.r > WORLD_W - 40) {
+            p.x = WORLD_W - 40 - p.r;
+            if (p.px < p.x) p.px = p.x;
         }
-        if (p.y - p.r < 24) {
-            p.y = 24 + p.r;
-            p.py = p.y - (p.py - p.y) * 0.25;
+        if (p.y - p.r < 40) {
+            p.y = 40 + p.r;
+            if (p.py > p.y) p.py = p.y;
         }
     }
 }
 
 fn headOnFloor(head: usize) bool {
-    // Need a real mat kiss — grazes don't count.
-    return particles[head].y + particles[head].r >= FLOOR_Y - 0.25;
+    return particles[head].y + particles[head].r >= FLOOR_Y - 0.5;
 }
 
 fn awardPoint(scorer: i32) void {
     if (phase != .playing) return;
     if (scorer == 1) p1_score += 1 else p2_score += 1;
     last_scorer = scorer;
-    shake = 1;
+    shake = 0.85;
     p1_pin_timer = 0;
     p2_pin_timer = 0;
     if (p1_score >= WIN_SCORE or p2_score >= WIN_SCORE) {
@@ -327,6 +334,20 @@ fn writeState() void {
         state_buf[o + 1] = particles[i].y;
         state_buf[o + 2] = particles[i].r;
     }
+}
+
+fn simulateFrame() void {
+    applyInput(P1_TORSO, P1_HEAD, P1_HIPS, p1_input, &p1_up_prev);
+    applyInput(P2_TORSO, P2_HEAD, P2_HIPS, p2_input, &p2_up_prev);
+
+    var s: usize = 0;
+    while (s < SUBSTEPS) : (s += 1) {
+        integrate();
+        satisfyConstraints();
+        collideWorld();
+    }
+
+    for (&particles) |*p| clampSpeed(p);
 }
 
 export fn game_init() void {
@@ -371,11 +392,8 @@ export fn game_set_input(
 }
 
 export fn game_update(dt_raw: f32) void {
-    var dt = dt_raw;
-    if (dt > 0.033) dt = 0.033;
-    if (dt < 0) dt = 0;
-
-    shake = @max(0, shake - dt * 2.2);
+    _ = dt_raw; // fixed 60Hz feel; host still calls once per frame
+    shake = @max(0, shake - 0.04);
 
     switch (phase) {
         .match_over => {
@@ -383,8 +401,8 @@ export fn game_update(dt_raw: f32) void {
             return;
         },
         .scored => {
-            phase_timer -= dt;
-            integrate(dt * 0.3);
+            phase_timer -= 1.0 / 60.0;
+            integrate();
             satisfyConstraints();
             collideWorld();
             if (phase_timer <= 0) {
@@ -397,40 +415,30 @@ export fn game_update(dt_raw: f32) void {
         },
         .playing => {
             if (phase_timer > 0) {
-                phase_timer -= dt;
+                phase_timer -= 1.0 / 60.0;
                 writeState();
                 return;
             }
         },
     }
 
-    applyInput(P1_TORSO, P1_HEAD, P1_HIPS, p1_input, &p1_up_prev, dt);
-    applyInput(P2_TORSO, P2_HEAD, P2_HIPS, p2_input, &p2_up_prev, dt);
-    // Posture assist only when not actively crushing downward.
-    if (!p1_input.down) postureAssist(P1_HEAD, P1_TORSO, P1_HIPS, dt);
-    if (!p2_input.down) postureAssist(P2_HEAD, P2_TORSO, P2_HIPS, dt);
-    integrate(dt);
-    satisfyConstraints();
-    collideWorld();
+    simulateFrame();
 
     const p1_down = headOnFloor(P1_HEAD);
     const p2_down = headOnFloor(P2_HEAD);
-    // Scorer must be structurally higher (torso above pinned head).
-    const p2_on_top = particles[P2_TORSO].y + 12 < particles[P1_HEAD].y;
-    const p1_on_top = particles[P1_TORSO].y + 12 < particles[P2_HEAD].y;
+    // On top ≈ your hips clearly higher than their head (smaller y).
+    const p2_on_top = particles[P2_HIPS].y + 20 < particles[P1_HEAD].y;
+    const p1_on_top = particles[P1_HIPS].y + 20 < particles[P2_HEAD].y;
 
-    if (p1_down and p2_on_top) p1_pin_timer += dt else p1_pin_timer = 0;
-    if (p2_down and p1_on_top) p2_pin_timer += dt else p2_pin_timer = 0;
+    if (p1_down and p2_on_top) p1_pin_timer += 1.0 / 60.0 else p1_pin_timer = 0;
+    if (p2_down and p1_on_top) p2_pin_timer += 1.0 / 60.0 else p2_pin_timer = 0;
 
-    const p1_pinned = p1_pin_timer >= PIN_HOLD;
-    const p2_pinned = p2_pin_timer >= PIN_HOLD;
-
-    if (p1_pinned and p2_pinned) {
+    if (p1_pin_timer >= PIN_HOLD and p2_pin_timer >= PIN_HOLD) {
         spawnFighters();
         phase_timer = RESET_PAUSE;
-    } else if (p1_pinned) {
+    } else if (p1_pin_timer >= PIN_HOLD) {
         awardPoint(2);
-    } else if (p2_pinned) {
+    } else if (p2_pin_timer >= PIN_HOLD) {
         awardPoint(1);
     }
 
