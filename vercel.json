@@ -1,8 +1,8 @@
 {
   "framework": null,
-  "buildCommand": null,
+  "buildCommand": "echo static-export",
   "outputDirectory": "web",
-  "installCommand": null,
+  "installCommand": "echo no-install",
   "headers": [
     {
       "source": "/(.*)\\.wasm",
@@ -10,14 +10,6 @@
         { "key": "Content-Type", "value": "application/wasm" },
         { "key": "Cache-Control", "value": "public, max-age=3600" }
       ]
-    }
-  ],
-  "redirects": [
-    {
-      "source": "/:path*",
-      "has": [{ "type": "host", "value": "suplex-menhir-holdings.vercel.app" }],
-      "destination": "https://suplex.menhir-holdings.com/:path*",
-      "permanent": true
     }
   ]
 }
