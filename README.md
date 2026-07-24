@@ -23,4 +23,4 @@ http://localhost:4173
 | Coral (P2) | Arrow keys |
 | Rematch | `R` |
 
-Hold their **head** on the mat (~0.22s) to score. First to **11**.
+Hold their **head** on the mat (~0.3s) while you’re on top to score. First to **11**.
