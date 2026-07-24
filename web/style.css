@@ -1,0 +1,248 @@
+:root {
+  --ink: #12151a;
+  --paper: #e8e2d6;
+  --muted: #8a8478;
+  --cyan: #2ec4b6;
+  --cyan-deep: #1a8f86;
+  --coral: #ff6b4a;
+  --coral-deep: #c4452d;
+  --floor: #2a3038;
+  --line: rgba(232, 226, 214, 0.12);
+  --glow: rgba(46, 196, 182, 0.18);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background:
+    radial-gradient(1200px 600px at 50% -10%, var(--glow), transparent 55%),
+    linear-gradient(180deg, #1a1e24 0%, var(--ink) 45%, #0c0e11 100%);
+  color: var(--paper);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+body {
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+}
+
+.stage {
+  width: min(100%, 1040px);
+  display: grid;
+  gap: 0.85rem;
+}
+
+.topbar {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.eyebrow {
+  margin: 0 0 0.15rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.brand h1 {
+  margin: 0;
+  font-family: "Archivo Black", sans-serif;
+  font-size: clamp(2.4rem, 6vw, 3.6rem);
+  line-height: 0.9;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+}
+
+.scoreboard {
+  display: grid;
+  grid-template-columns: auto auto auto;
+  align-items: center;
+  gap: 1rem;
+  min-width: 240px;
+}
+
+.score {
+  display: grid;
+  justify-items: center;
+  gap: 0.15rem;
+}
+
+.score .who {
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+}
+
+.score span:last-child {
+  font-family: "Archivo Black", sans-serif;
+  font-size: 2.2rem;
+  line-height: 1;
+}
+
+.score.p1 span:last-child {
+  color: var(--cyan);
+}
+
+.score.p2 span:last-child {
+  color: var(--coral);
+}
+
+.goal {
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+.goal b {
+  color: var(--paper);
+  font-weight: 600;
+}
+
+.arena-wrap {
+  position: relative;
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 30%),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 47px,
+      rgba(255, 255, 255, 0.015) 48px
+    ),
+    #15191f;
+  box-shadow:
+    0 30px 80px rgba(0, 0, 0, 0.45),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+  overflow: hidden;
+}
+
+#game {
+  display: block;
+  width: 100%;
+  height: auto;
+  vertical-align: middle;
+}
+
+.banner {
+  position: absolute;
+  inset: auto 0 38%;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  font-family: "Archivo Black", sans-serif;
+  font-size: clamp(1.6rem, 5vw, 2.8rem);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-shadow: 0 8px 40px rgba(0, 0, 0, 0.65);
+  animation: punch 0.45s cubic-bezier(0.2, 1.4, 0.3, 1) both;
+}
+
+.banner.p1 {
+  color: var(--cyan);
+}
+
+.banner.p2 {
+  color: var(--coral);
+}
+
+.banner.match {
+  color: var(--paper);
+}
+
+.banner.hidden {
+  display: none;
+}
+
+@keyframes punch {
+  from {
+    transform: scale(0.7);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.hud {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.controls .tag {
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 0.68rem;
+}
+
+.controls.p1 .tag {
+  color: var(--cyan);
+}
+
+.controls.p2 .tag {
+  color: var(--coral);
+}
+
+kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.55rem;
+  height: 1.55rem;
+  padding: 0 0.3rem;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--paper);
+  font: inherit;
+  font-size: 0.72rem;
+}
+
+#restart {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--paper);
+  font: inherit;
+  font-size: 0.78rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0.55rem 0.9rem;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+#restart:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(232, 226, 214, 0.35);
+}
+
+@media (max-width: 720px) {
+  .hud {
+    justify-content: center;
+  }
+
+  .controls .hint {
+    display: none;
+  }
+}

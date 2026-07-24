@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SUPLEX — joined ragdoll wrestling</title>
+    <meta
+      name="description"
+      content="Local 2-player physics wrestling from Menhir Holdings. Smash their head into the floor. First to 11."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Mono:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <header class="topbar">
+        <div class="brand">
+          <p class="eyebrow">menhir holdings · zig → wasm</p>
+          <h1>SUPLEX</h1>
+        </div>
+        <div class="scoreboard" aria-live="polite">
+          <div class="score p1">
+            <span class="who">P1</span>
+            <span id="score1">0</span>
+          </div>
+          <div class="goal">first to <b id="winScore">11</b></div>
+          <div class="score p2">
+            <span class="who">P2</span>
+            <span id="score2">0</span>
+          </div>
+        </div>
+      </header>
+
+      <div class="arena-wrap">
+        <canvas id="game" width="960" height="540" aria-label="SUPLEX arena"></canvas>
+        <div id="banner" class="banner hidden" role="status"></div>
+      </div>
+
+      <footer class="hud">
+        <div class="controls p1">
+          <span class="tag">cyan</span>
+          <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>
+          <span class="hint">lean · jump · crush</span>
+        </div>
+        <button id="restart" type="button">rematch</button>
+        <div class="controls p2">
+          <span class="hint">lean · jump · crush</span>
+          <kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd>
+          <span class="tag">coral</span>
+        </div>
+      </footer>
+    </div>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

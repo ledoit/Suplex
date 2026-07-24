@@ -1,0 +1,9 @@
+{
+  "name": "suplex",
+  "private": true,
+  "scripts": {
+    "build": "bun ./scripts/build.ts",
+    "dev": "bun run build && bun run serve",
+    "serve": "bun ./scripts/serve.ts"
+  }
+}
