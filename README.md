@@ -4,7 +4,7 @@ Local 2-player physics wrestling inspired by *Get On Top*.
 
 **Stack:** Zig 0.17 → `wasm32-freestanding` physics, vanilla canvas host.
 
-**Live:** https://suplex.menhir-holdings.com
+**Live:** https://suplex.koalasalmon.com
 
 ## Run
 
